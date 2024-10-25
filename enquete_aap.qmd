@@ -1,0 +1,748 @@
+---
+title: "Enquête AAP"
+# format:
+#   html:
+#     embed-resources: true
+format: pdf
+prefer-html: true
+    # toc: true
+editor: visual
+---
+
+```{r}
+#| label: setup
+#| include: false
+#| echo: false
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+libraries <- c(
+  "bannerCommenter", "readxl", "readr", "openxlsx", "tidyverse", 
+  "data.table", "dplyr", "stringr", "conflicted", "quarto", "knitr", "janitor", "ggshadow", "kableExtra", "sf", "viridis", "ggplot2"
+)
+for (package in libraries) {
+  if (!requireNamespace(package, quietly = TRUE)) {
+    install.packages(package, dependencies = TRUE)
+    library(package, character.only = TRUE)
+  } else {
+    library(package, character.only = TRUE)
+  }
+}
+
+conflicted::conflicts_prefer(dplyr::filter)
+
+GTAAP_data_raw <- read.csv("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/AAP/GTAAP_HH_survey_15092024_data.csv",
+                       header=T)
+
+GTAAP_data_raw_date<-GTAAP_data_raw |> select(c(1:3))
+GTAAP_data_raw <-GTAAP_data_raw %>% select( -6, -7)
+
+GTAAP_questionnaire <-  read_excel("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/AAP/GTAAP_HH_survey_questionnaire.xlsx")
+
+GTAAP_questionnaire_choice <-  read_excel("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/AAP/GTAAP_HH_survey_questionnaire.xlsx", 2)
+
+GTAAP_questionnaire_choice <-GTAAP_questionnaire_choice |> rename(label=3)
+# table(GTAAP_data$identification.organisation_type)
+# 
+# table(GTAAP_data$identification.activites_zone)
+# 
+# table(GTAAP_data$enquete.groupement_activites)
+# 
+# table(GTAAP_data$enquete.groupement_crm.ligne_verte)
+
+
+
+# Load the dataset
+data <- read_csv("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/AAP/GTAAP_HH_survey_nopii.csv")
+data <- data %>%
+mutate(across(where(is.character), ~ na_if(., "n/a")))
+# 
+colnames(data)<-colnames(GTAAP_data_raw)
+# 
+# GTAAP_data_raw<-data
+attr(GTAAP_data_raw, "spec") <- NULL  
+
+GTAAP_data_raw <- GTAAP_data_raw %>%
+mutate(across(where(is.character), ~ na_if(., "n/a")))
+
+
+#   mutate(across(where(is.character), ~ case_when(
+#     . == "True" ~ 1,
+#     . == "False" ~ 0,
+#     TRUE ~ .
+#   )))
+# 
+# GTAAP_data_raw <- GTAAP_data_raw %>%
+#   mutate(across(where(is.character), ~ case_when(
+#     . == "True" ~ 1,
+#     . == "False" ~ 0,
+#     TRUE ~ .
+#   ))) %>%
+#   mutate(across(where(is.factor), ~ case_when(
+#     as.character(.) == "True" ~ 1,
+#     as.character(.) == "False" ~ 0,
+#     TRUE ~ NA_real_
+#   )))
+
+
+# Define Mercy Corps' primary brand color
+mercy_corps_red <- "#c8102e"
+
+# attributes(GTAAP_data_raw) <- NULL
+
+```
+
+# Présentation des répondants
+
+## nombre de surveys
+
+```{r}
+
+Number_of_survey<-nrow(GTAAP_data_raw_date)
+date_range_dc <- GTAAP_data_raw_date %>%
+  mutate(received_on = as.Date(start, format = "%Y-%m-%dT%H:%M:%S")) %>%
+  select(received_on) %>%
+  arrange(received_on) %>%
+  slice(c(1, n()))
+
+# Creating a table
+table_data <- data.frame(Number_of_survey = Number_of_survey,
+                         Start_Date = date_range_dc$received_on[1],
+                         End_Date = date_range_dc$received_on[2])
+
+# Outputting the table in a nice format
+kable(table_data, format = "html", col.names = c("Number of Surveys", "Start Date", "End Date")) %>%
+  kable_styling(bootstrap_options = c("basic", "hover"), full_width = FALSE)
+```
+
+## Type de répondants
+
+```{r}
+# colnames(GTAAP_data_raw)
+
+# Create the pie chart for organisation_type
+data %>%
+  count(identification.organisation_type) %>%
+  mutate(percentage = n / sum(n) * 100) %>%  # Calculate percentages
+  ggplot(aes(x = "", y = n, fill = identification.organisation_type)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y") +
+  labs(title = "Type d'organisation") +
+  theme_void() + 
+  theme(legend.title = element_blank(),
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5)) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5)) +  # Add percentage labels
+  scale_fill_manual(values = c("#c8102e", "grey"))  # Mercy Corps red and grey
+
+# Save the plot
+ggsave("organisation_type.png", bg = "white")
+
+```
+
+## Identification
+
+```{r}
+
+temp <- data %>%
+  select(contains("secteur_intervention"), -contains(".autre"))%>%
+  pivot_longer(cols = everything()) %>%
+  filter(!is.na(value)) %>%
+  group_by(value) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)  # Calculate percentage
+
+# Create a horizontal bar chart representing percentages
+ggplot(temp, aes(x = reorder(value, percentage), y = percentage)) +
+  geom_bar(stat = "identity", fill = "#c8102e") +  # Mercy Corps red for the bars
+  coord_flip() +  # Makes the bar chart horizontal
+  labs(title = "Secteur d'intervention des répondants", x = "Secteur d'intervention", y = "Percentage (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5)) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), hjust = -0.1) 
+
+# Save the plot with a white background
+ggsave("secteur_intervention.png", bg = "white")
+
+```
+
+## zone d'activités
+
+```{r}
+
+temp <- GTAAP_data_raw %>%
+  select(contains("groupement_activites")) %>% rename(groupement=1) %>%  
+  # Split the 'groupement' column by space
+  mutate(groupement_split = strsplit(as.character(groupement), " ")) %>%
+  # Unnest the split values into separate rows
+  unnest(groupement_split) %>% 
+  mutate(groupement_split=str_to_title(groupement_split)) %>% 
+  select(2) %>% 
+  filter(!is.na(groupement_split)) %>% 
+  group_by(groupement_split) %>% 
+  reframe(count=n())
+
+Total_BD_conflict_4Ooct24 <- readRDS("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/SHAEPES/shaepes/Total_BD_conflict_4Ooct24.rds")
+
+test<-Total_BD_conflict_4Ooct24 %>% select(TERRITOIRE, `VILLAGE/VILLE`, Latitude, Longitude) %>% unique()
+
+# test<-Total_BD_conflict_4Ooct24 %>% select(TERRITOIRE) %>% unique()
+
+temp2<-merge(temp, test,by.x="groupement_split", by.y="VILLAGE/VILLE", all.x=T) %>% group_by(TERRITOIRE, groupement_split) %>% slice(1)
+
+# write.xlsx(temp2, "village_gps_coordinates.xlsx")
+# write.xlsx(temp)
+
+
+```
+
+Carte =\> pas très concluant sur R
+
+```{r}
+gps_coordinates_full <- read_excel("groupement_gps_coordinates_full.xlsx")
+table(gps_coordinates_full$TERRITOIRE)
+
+# Convertir le dataframe en objet spatial
+grp_sf <- gps_coordinates_full %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)  # CRS WGS84
+
+# Lire le shapefile et filtrer pour Rutshuru
+ETH_shapefile <- st_read("C:/Users/MERCYCORPS/OneDrive - mercycorps.org/DRC-CAT/Shapefiles/cod_admbnda_rgc_itos_20190911_shp/cod_admbnda_adm2_rgc_20190911.shp")
+
+# table(survey_adm4$ADM2_FR)
+survey_adm4 <- ETH_shapefile %>% filter(ADM1_FR == "Nord-Kivu" & ADM2_FR %in% c("Rutshuru", "Lubero", "Nyiragongo", "Goma", "Masisi"))
+
+# Combiner les géométries pour éviter les duplications
+survey_adm4_union <- st_union(survey_adm4)
+
+# Extraire les coordonnées du centroïde
+centroid <- st_coordinates(st_centroid(survey_adm4_union))
+
+# Convertir le centroïde en dataframe et ajouter le nom administratif
+centroid_df <- as.data.frame(centroid)
+# centroid_df$ADM2_FR <- "Rutshuru"
+
+# Créer le graphique
+plot <- ggplot() +
+  geom_sf(data = survey_adm4, fill = NA, color = "black") + # Ajouter les limites administratives
+  geom_sf(data = grp_sf, aes(size = count), color = "blue", alpha = 0.7) + 
+   geom_sf_text(data = grp_sf, aes(label = groupement_split), size = 3, color = "black", vjust = -1) +  # Add labels
+  labs(
+    title = "Présence des ONGs",
+    size = "# partenaires"  # Titre de la légende pour la taille des points
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(), # Supprimer les lignes de grille
+    axis.text = element_blank(), # Supprimer le texte des axes
+    axis.title = element_blank(), # Supprimer les titres des axes
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Centrer et styliser le titre
+  ) +
+  coord_sf(lims_method = "geometry_bbox")
+
+
+plot
+
+
+```
+
+## canaux de communication
+
+-   pb de coding tu questionnaire, on ne peux pas avoir les canaux par groupement (car on obtient les canaux par groupements de sélection multiple...)
+
+```{r}
+
+temp <- data %>%
+  select(contains("groupement_activites"), contains("groupement_crm"))%>% 
+  rename(groupement=1) |> 
+   mutate(groupement_split = strsplit(as.character(groupement), " ")) |> 
+unnest(groupement_split) %>% 
+  mutate(groupement_split=str_to_title(groupement_split)) |> 
+  select(-groupement) |> relocate(groupement_split)%>% 
+  pivot_longer(cols=!groupement_split) |> 
+  select(-2) |> 
+  filter(!is.na(value)) |> 
+  group_by(groupement_split, value) |> 
+  reframe(count=n())
+
+# temp <-temp |>  
+#   pivot_wider(names_from = value, values_from = count)
+
+
+ggplot(temp, aes(x = groupement_split, y = count, fill = value)) +
+  geom_bar(stat = "identity") +
+  scale_fill_viridis_d() +  # Apply Viridis colors
+  labs(title = "Stacked Bar Plot by Groupement and Modality",
+       x = "Groupement",
+       y = "Count",
+       fill = "Modality") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
+
+
+
+# Save the plot with a white background
+ggsave("groupement_canaux.png", bg = "white")
+
+
+```
+
+# Fonctionalité
+
+-   pas trop de sens par localité et par canal =\> pas assez de réponse
+
+```{r}
+# Initialiser une liste vide pour stocker les datasets
+temp_list <- list()
+
+# Définir le nombre de canaux
+num_canals <- 5
+
+# Boucle sur les canaux
+for(i in 1:5){
+  canal_col <- paste0("loop_canal.", i)
+  
+  temp_i <- GTAAP_data_raw %>%
+    select(contains("groupement_activites"), contains(canal_col)) |> 
+    select(1:3) |> 
+    rename(groupement = 1, canal = 2, fonction = 3) |> 
+    mutate(groupement_split = strsplit(as.character(groupement), " ")) |> 
+    unnest(groupement_split) %>% 
+    mutate(groupement_split = str_to_title(groupement_split)) |> 
+    select(-groupement) |> 
+    relocate(groupement_split)
+  
+  temp_list[[i]] <- temp_i
+}
+
+# Combiner tous les datasets
+temp_combined <- bind_rows(temp_list)
+
+temp <- temp_combined|> 
+group_by( canal, fonction) |> 
+  reframe(count=n())|> 
+  pivot_wider(names_from = fonction, values_from = count) |> select(-5) |> pivot_longer(
+    cols = !canal,
+    names_to = "fonction",
+    values_to = "count"
+  ) |> 
+  filter(!is.na(count) & !is.na(canal) & !fonction=="nsp") 
+
+table(temp$fonction)
+temp<-temp|> 
+   mutate(
+    fonction = recode(fonction,
+                      "inferieur" = "Inférieure",
+                      "normal" = "Normale",
+                      "superieure" = "Supérieure"
+    ),
+    fonction = factor(fonction, levels = c("Supérieure", "Normale", "Inférieure"))
+  ) |> 
+  mutate(label=count, 
+         count=ifelse(fonction=='Inférieure', -count, count))
+
+table(temp$fonction)
+
+fonction_colors <- c(
+  "Normale" = "#1f78b4",  # Bleu
+  "Inférieure" = "#e31a1c",  # Rouge
+  "Supérieure" = "#33a02c"
+)
+
+
+plot <- ggplot(temp, aes(x = canal, y = count, fill = fonction)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = label), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white") +
+  labs(
+    title = "Volume d'utilisation des canaux",
+    x = "",
+    y = "",
+    fill = "Utilisation"
+  ) +
+  # scale_x_continuous(limits = c(0,6), breaks = 0:6) +
+    scale_fill_manual(values = fonction_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    axis.text.x=element_blank(),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "bottom",
+    panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )+
+  coord_flip()
+
+
+plot
+```
+
+## voir les localités où ça ne fonctionne pas
+
+```{r}
+
+temp <- temp_combined|> 
+group_by( groupement_split,  fonction) |> 
+  reframe(count=n()) |> 
+    filter(fonction=="inferieur") 
+
+|> 
+  pivot_wider(names_from = fonction, values_from = count) |> select(-5) |> pivot_longer(
+    cols = !canal,
+    names_to = "fonction",
+    values_to = "count"
+  ) |> 
+  filter(!is.na(count) & !is.na(canal) & !fonction=="nsp") 
+
+ggplot(temp, aes(x = reorder(groupement_split, count), y = count)) +
+  geom_bar(stat = "identity", fill = "#c8102e") +  # Mercy Corps red for the bars
+  coord_flip() +  # Makes the bar chart horizontal
+  labs(title = "Volume d'utilisation des canaux est inférieure", x = "Groupements", y = "") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5)) +
+   geom_text(aes(label = count), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white")
+
+
+```
+
+# Contraintes par canal
+
+```{r}
+
+# Initialiser une liste vide pour stocker les datasets
+temp_list <- list()
+
+# Définir le nombre de canaux
+num_canals <- 5
+
+# Boucle sur les canaux
+for(i in 1:5){
+  canal_col <- paste0("loop_canal.", i)
+  
+  temp_i <- GTAAP_data_raw %>%
+    select(contains("groupement_activites"), contains(canal_col), -contains("autre")) |> 
+    rename(groupement = 1, canal = 2, fonction = 3) |> 
+    select(c(1:3), contains("type_contrainte")) |> 
+    rename_with(~ sub(".*type_contrainte\\.", "", .x), contains("type_contrainte")) |> 
+    mutate(groupement_split = strsplit(as.character(groupement), " ")) |> 
+    unnest(groupement_split) %>% 
+    mutate(groupement_split = str_to_title(groupement_split)) |> 
+    select(-groupement) |> 
+    relocate(groupement_split)
+  
+  temp_list[[i]] <- temp_i
+}
+
+# Combiner tous les datasets
+temp_combined_cont <- bind_rows(temp_list)
+
+# colnames(temp_combined_cont)
+
+temp <- temp_combined_cont %>%
+  filter(!is.na(canal)) |> 
+  mutate(across(4:13, ~ case_when(
+    . == "True" ~ 1,
+    . == "False" ~ 0,
+    TRUE ~ as.numeric(.)
+  ))) |> 
+    select(-fonction) |> 
+  pivot_longer(cols=!c(groupement_split, canal)) |> 
+  group_by(canal,  name) |> 
+  reframe(count=sum(value, na.rm=T)) |> 
+  filter(!name %in% c("nsp", "pnpr"))
+
+ggp <- ggplot(temp, aes(name, canal)) +    
+  geom_tile(aes(fill = count)) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+  )+ scale_fill_gradient(low = "green", high = "red")
+
+ggp
+
+```
+
+## par localité 
+
+```{r}
+temp <- temp_combined_cont %>%
+  filter(!is.na(canal)) |> 
+  mutate(across(4:13, ~ case_when(
+    . == "True" ~ 1,
+    . == "False" ~ 0,
+    TRUE ~ as.numeric(.)
+  ))) |> 
+    select(-fonction) |> 
+  pivot_longer(cols=!c(groupement_split, canal)) |> 
+  group_by(groupement_split,  name) |> 
+  reframe(count=sum(value, na.rm=T)) |> 
+    filter(!name %in% c("nsp", "pnpr"))
+
+
+ggp <- ggplot(temp, aes(name, groupement_split)) +    
+  geom_tile(aes(fill = count)) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+  )+ scale_fill_gradient(low = "green", high = "red")
+
+ggp
+
+```
+
+## Impact 
+
+```{r}
+
+# Initialiser une liste vide pour stocker les datasets
+temp_list <- list()
+
+# Définir le nombre de canaux
+num_canals <- 5
+
+# Boucle sur les canaux
+for(i in 1:5){
+  canal_col <- paste0("loop_canal.", i)
+  
+  temp_i <- GTAAP_data_raw %>%
+    select(contains("groupement_activites"), contains(canal_col)) |> 
+    select(1:2, contains("estimation_impact")) |> 
+    rename(groupement = 1, canal = 2) |> 
+    mutate(groupement_split = strsplit(as.character(groupement), " ")) |> 
+    unnest(groupement_split) %>% 
+    mutate(groupement_split = str_to_title(groupement_split)) |> 
+    select(-groupement) |> 
+    relocate(groupement_split)
+  
+  temp_list[[i]] <- temp_i
+}
+
+
+# Combiner tous les datasets
+temp_combined <- bind_rows(temp_list)
+
+
+temp <- temp_combined|> select(-canal) |>  pivot_longer(cols=!groupement_split) |> select(-name) |> filter(!is.na(value)) |> 
+group_by( groupement_split, value) |> 
+  reframe(count=n()) |> mutate(value=str_to_title(value),
+                               groupement_split = factor(groupement_split, levels = sort(unique(groupement_split), decreasing = TRUE)),
+                               value = factor(value, levels = c("Faible", "Moyen", "Fort"))) 
+
+fonction_colors <- c(
+  "Moyen" = "#1f78b4",  # Bleu
+  "Fort" = "#e31a1c",  # Rouge
+  "Faible" = "#33a02c"
+)
+
+# temp$value <- relevel(temp$value, 'Fort')
+
+plot <- ggplot(temp, aes(x = groupement_split, y = count, fill = value)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = count), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white") +
+  labs(
+    title = "Impact des contraintes",
+    x = "",
+    y = "",
+    fill = ""
+  ) +
+  # scale_x_continuous(limits = c(0,6), breaks = 0:6) +
+    scale_fill_manual(values = fonction_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    axis.text.x=element_blank(),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "bottom",
+    panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )+
+  coord_flip()
+
+
+plot
+
+```
+
+## Fréquence 
+
+```{r}
+
+
+# Initialiser une liste vide pour stocker les datasets
+temp_list <- list()
+
+# Définir le nombre de canaux
+num_canals <- 5
+
+# Boucle sur les canaux
+for(i in 1:5){
+  canal_col <- paste0("loop_canal.", i)
+  
+  temp_i <- GTAAP_data_raw %>%
+    select(contains("groupement_activites"), contains(canal_col)) |> 
+    select(1:2, contains("estimation_frequence")) |> 
+    rename(groupement = 1, canal = 2) |> 
+    mutate(groupement_split = strsplit(as.character(groupement), " ")) |> 
+    unnest(groupement_split) %>% 
+    mutate(groupement_split = str_to_title(groupement_split)) |> 
+    select(-groupement) |> 
+    relocate(groupement_split)
+  
+  temp_list[[i]] <- temp_i
+}
+
+
+# Combiner tous les datasets
+temp_combined <- bind_rows(temp_list)
+
+table(temp_combined$enquete.loop_canal.1..estimation_frequence)
+
+
+temp <- temp_combined|> select(-canal) |>  pivot_longer(cols=!groupement_split) |> select(-name) |> filter(!is.na(value)) |> 
+group_by( groupement_split, value) |> 
+  reframe(count=n())|>
+    mutate(
+    value = recode(value,
+                      "frequent" = "Fréquent",
+                      "occasionnel" = "Occasionnel",
+                      "systematique" = "Systématique"
+    ),
+    value=str_to_title(value),
+                               groupement_split = factor(groupement_split, levels = sort(unique(groupement_split), decreasing = TRUE)),
+                               value = factor(value, levels = c("Occasionnel", "Fréquent", "Systématique"))) 
+
+fonction_colors <- c(
+  "Fréquent" = "#1f78b4",  # Bleu
+  "Systématique" = "#e31a1c",  # Rouge
+  "Occasionnel" = "#33a02c"
+)
+
+# temp$value <- relevel(temp$value, 'Fort')
+
+plot <- ggplot(temp, aes(x = groupement_split, y = count, fill = value)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = count), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white") +
+  labs(
+    title = "Fréquence des contraintes",
+    x = "",
+    y = "",
+    fill = "Fréquence"
+  ) +
+  # scale_x_continuous(limits = c(0,6), breaks = 0:6) +
+    scale_fill_manual(values = fonction_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    axis.text.x=element_blank(),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "bottom",
+    panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )+
+  coord_flip()
+
+
+plot
+
+
+```
+
+## fréquences x type de contraintes
+
+```{r}
+
+
+# Initialiser une liste vide pour stocker les datasets
+temp_list <- list()
+
+# Définir le nombre de canaux
+num_canals <- 5
+
+# Boucle sur les canaux
+for(i in 1:5){
+  canal_col <- paste0("loop_canal.", i)
+  # i=1
+  temp_i <- GTAAP_data_raw %>%
+    select( contains(canal_col)) |> 
+    select( contains("estimation_frequence"), contains("type_contrainte"), -contains("autre")) |>
+    rename(frequence=1) |> 
+    rename_with(~ sub(".*type_contrainte\\.", "", .x), contains("type_contrainte")) |> filter(!is.na(frequence)) |> select(-nsp, -pnpr) |> 
+     pivot_longer(cols=!frequence)  |> 
+   mutate(value = case_when(
+    str_to_lower(value) == "true" ~ 1,
+    str_to_lower(value) == "false" ~ 0,
+    TRUE ~ as.numeric(value)  # Remplacer par 0 ou NA si nécessaire
+  ))   |> 
+    filter(!value==0)
+  
+  temp_list[[i]] <- temp_i
+}
+
+
+# Combiner tous les datasets
+temp_combined <- bind_rows(temp_list)
+
+
+temp<-temp_combined |> 
+  group_by( name, frequence) |> 
+  reframe(count=n()) |> 
+   mutate(
+    frequence = recode(frequence,
+                      "frequent" = "Fréquent",
+                      "occasionnel" = "Occasionnel",
+                      "systematique" = "Systématique"
+    ),
+    frequence = factor(frequence, levels = c( "Systématique", "Fréquent", "Occasionnel")))
+
+
+fonction_colors <- c(
+  "Fréquent" = "#1f78b4",  # Bleu
+  "Systématique" = "#e31a1c",  # Rouge
+  "Occasionnel" = "#33a02c"
+)
+
+temp<-merge(temp, GTAAP_questionnaire_choice |> filter(list_name=="obs_contraintes"), by.x="name", by.y="name", all.x=T)
+
+
+plot <- ggplot(temp, aes(x = label, y = count, fill = frequence)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = count), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white") +
+  labs(
+    title = "Fréquence par type de contraintes",
+    x = "",
+    y = "",
+    fill = "Fréquence"
+  ) +
+  # scale_x_continuous(limits = c(0,6), breaks = 0:6) +
+    scale_fill_manual(values = fonction_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    axis.text.x=element_blank(),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "bottom",
+    panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )+
+  coord_flip()
+
+
+plot
+
+
+```
